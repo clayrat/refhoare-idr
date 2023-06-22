@@ -1,5 +1,6 @@
 module LambdaC
 
+import Data.Nat
 import LambdaB
 import LambdaR
 
@@ -199,3 +200,106 @@ mutual
   0 vcF : (0 phi : IC g -> Type) -> ATmF g s ksi t psi -> Type
   vcF phi (AFUN e) = ( (gam : IC g) -> (is : IU s) -> phi gam -> ksi (gam, is) -> pre psi e (gam, is)
                      , vc (\gam_s => (phi (fst gam_s), ksi gam_s)) psi e)
+
+AONE, ATWO, ATHREE : ATm g N
+AONE = ASU AZE
+ATWO = ASU AONE
+ATHREE = ASU ATWO
+
+CONE : CTm g phi N (\gn => snd gn = 1)
+CONE = CSU CZE
+
+CTWO : CTm g phi N (\gn => snd gn = 2)
+CTWO = CSU CONE
+
+Cf0 : CTmF f phi N (\gn => LT (snd gn) 2) N (\gn => LT (snd gn) 4)
+Cf0 = CFUN $ CSUB (CBOP OpPlus (CVAR Top) CONE)
+                  _ --(\gn => LT (snd gn) 4)
+                  (\(g,x),n,(_,prf),en => rewrite en in
+                                          rewrite plusCommutative x 1 in
+                                          LTESucc $ lteSuccRight prf)
+
+CEx0 : CTm g phi N (\gn => LT (snd gn) 5)
+CEx0 = CSUB (CAPP Cf0 $ CSUB CONE
+                             _ --(\gn => LT (snd gn) 2)
+                             (\g,n,_,en => rewrite en in reflexive))
+            _ --(\gn => LT (snd gn) 5)
+            (\gam,x,_,(_ ** (_, prfx)) => lteSuccRight prfx)
+
+Af0 : ATmF g N (\gn => LT (snd gn) 2) N  (\gn => LT (snd gn) 4)
+Af0 = AFUN (ABOP OpPlus (AVAR Top) AONE)
+
+AEx0 : ATm g N
+AEx0 = AAPP Af0 AONE
+
+0 PreAEx0 : () -> Type
+PreAEx0 = pre {g = ECx} (\gn => LT (snd gn) 5) AEx0
+
+0 VcAEx0 : Type
+VcAEx0 = vc {g = ECx} (Kc ()) (\gn => LT (snd gn) 5) AEx0
+
+AEx1 : ATm g N
+AEx1 = AAPP Af0 ATWO
+
+0 PreAEx1 : () -> Type
+PreAEx1 = pre {g = ECx} (\gn => LT (snd gn) 5) AEx1
+
+0 VcAEx1 : Type
+VcAEx1 = vc {g = ECx} (Kc ()) (\gn => LT (snd gn) 5) AEx1
+
+AEx2 : ATm g N
+AEx2 = ABOP OpPlus AEx0 ATWO
+
+0 PreAEx2 : () -> Type
+PreAEx2 = pre {g = ECx} (\gn => LT (snd gn) 6) AEx2
+
+0 VcAEx2 : {g : Cx} -> Type
+VcAEx2 = vc {g} (\_ => mkC {g} Af0) (\gn => LT (snd gn) 6) AEx2
+
+0 CEx2Phi : IC g -> Type
+CEx2Phi gam = mkC {g} Af0
+
+CEx2 : {0 g : Cx} -> CTm g (CEx2Phi {g}) N (\gn => LT (snd gn) 6)
+CEx2 = CSUB (CBOP OpPlus CEx0 CTWO)
+            _ --(\gn => LT (snd gn) 6)
+            (\gam,x,prf,ex => rewrite ex in
+                              plusLteMonotoneRight 2 _ _ $
+                              prf _ reflexive)
+
+AEx3 : ATm g N
+AEx3 = ABOP OpPlus AEx0 AEx2
+
+0 PreAEx3 : () -> Type
+PreAEx3 = pre {g = ECx} (\gn => LT (snd gn) 10) AEx3
+
+PreAEx3prf : CEx2Phi {g=ECx} () -> PreAEx3 ()
+PreAEx3prf prf = ( ((),reflexive)
+                 , ( (((),reflexive), ((((),()),()),()))
+                   , plusLteMonotone (prf _ reflexive) $
+                     plusLteMonotoneRight 2 _ _ $
+                     lteSuccLeft $ prf _ reflexive
+                   )
+                 )
+
+0 VcAEx3 : {g : Cx} -> Type
+VcAEx3 = vc {g=ECx} (CEx2Phi {g=ECx}) (\gn => LT (snd gn) 10) AEx3
+
+VcAEx3prf : VcAEx3
+VcAEx3prf = (((\(),x,prf,lx => ( (),(((),())
+                               , plusLteMonotoneRight 1 _ _ $
+                                 lteSuccRight lx)
+                               )
+              , ((),())
+              )
+             , ((), \(),_,_,_,_,_ => ())
+             )
+            , (( ( \(),x,prf,lx => ( (),((),())
+                                   , plusLteMonotoneRight 1 _ _ $
+                                   lteSuccRight lx)
+
+                 , ((),()))
+               , ((),\(),_,_,_,_,_ => ())
+               ),())
+            )
+
+-- TODO metaprops
