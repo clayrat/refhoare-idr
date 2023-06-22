@@ -13,11 +13,13 @@ mutual
     AZE   : ATm g N
     ASU   : ATm g N -> ATm g N
     AIF   : ATm g Two -> ATm g t -> ATm g t -> ATm g t
-    ALET  : ATm g s -> ATm (CCx g s) t -> ATm g t
+    ALET  : {s : _} ->
+            ATm g s -> ATm (CCx g s) t -> ATm g t
     APRD  : ATm g s -> ATm g t -> ATm g (Prod s t)
     AFST  : ATm g (Prod s t) -> ATm g s
     ASND  : ATm g (Prod s t) -> ATm g t
-    AAPP  : ATmF g s ksi t psi -> ATm g s -> ATm g t
+    AAPP  : {s, t : _} -> {ksi : _} -> {psi : _} ->
+            ATmF g s ksi t psi -> ATm g s -> ATm g t
     ABOP  : (o : Op) -> ATm g (opL o) -> ATm g (opL o) -> ATm g (opR o)
 
   data ATmF : (g : Cx) -> (s : U) -> (ksi : IC (CCx g s) -> Type)
@@ -45,7 +47,7 @@ mutual
  iATmF : ATmF g s ksi t psi -> IC g -> IU s -> IU t
  iATmF = delta
 
-0 substC : (phi : IC (CCx g t) -> Type) -> ATm g t -> (IC g -> Type)
+substC : (phi : IC (CCx g t) -> Type) -> ATm g t -> (IC g -> Type)
 substC phi e ig = phi (ig, iATm e ig)
 
 mutual
@@ -62,7 +64,8 @@ mutual
           -> CTm g (\gam => (phi gam, iATm (ErC c) gam = True)) t psi
           -> CTm g (\gam => (phi gam, iATm (ErC c) gam = False)) t psi
           -> CTm g phi t psi
-    CLET   : {0 ksi : IC (CCx g s) -> Type} -> {0 psi : IC (CCx g t) -> Type} ->
+    CLET   : {s : _} ->
+             {0 ksi : IC (CCx g s) -> Type} -> {0 psi : IC (CCx g t) -> Type} ->
              (e1 : CTm g phi s ksi)
           -> (e2 : CTm (CCx g s) (\g_s => (phi (fst g_s), snd g_s = iATm (ErC e1) (fst g_s))) t (\gs_t => psi (fst (fst gs_t), snd gs_t)))
           -> CTm g phi t psi
@@ -73,7 +76,8 @@ mutual
           -> CTm g phi s (\g_nu => snd g_nu = fst (iATm (ErC e) (fst g_nu)))
     CSND   : (e : CTm g phi (Prod s t) psi)
           -> CTm g phi t (\g_nu => snd g_nu = snd (iATm (ErC e) (fst g_nu)))
-    CAPP   : {ksi : IC (CCx g s) -> Type} ->
+    CAPP   : {s, t : _} ->
+             {ksi : IC (CCx g s) -> Type} ->
              {psi : IC ((CCx (CCx g s) t)) -> Type} ->
              (f : CTmF g phi s ksi t psi)
           -> (e : CTm g phi s ksi)
@@ -160,8 +164,7 @@ refCSoundness' : (e : CTm ECx (Kc ()) t psi)
               -> psi ((), iATm (ErC e) ())
 refCSoundness' e = refCSoundness e ()
 
--- TODO psi should really be made irrelevant
-0 pre : (psi : IC (CCx g t) -> Type) -> (e : ATm g t) -> (IC g -> Type)
+pre : (psi : IC (CCx g t) -> Type) -> (e : ATm g t) -> (IC g -> Type)
 pre psi (ASU e)          ig = (pre (Kc ()) e ig, substC psi (ASU e) ig)
 pre psi (AIF c e1 e2)    ig = (pre (Kc ()) c ig, ifThenElse (iATm c ig) (pre psi e1 ig) (pre psi e2 ig))
 pre psi (ALET e1 e2)     ig = (pre (Kc ()) e1 ig, pre (\gs_t => psi (fst (fst gs_t), snd gs_t)) e2 (ig, iATm e1 ig))
@@ -179,25 +182,27 @@ pre psi  e               ig = substC psi e ig  -- It's just subst for the rest
 preF (AFUN e) ig = (ksi ig, pre psi e ig)
 
 mutual
-  0 vc : (phi : IC g -> Type) -> (psi : IC (CCx g t) -> Type) -> ATm g t -> Type
+  vc : {g : Cx} ->
+       (phi : IC g -> Type) -> (psi : IC (CCx g t) -> Type) -> ATm g t -> Type
   vc phi psi  (ASU e)          = vc phi (Kc ()) e
   vc phi psi  (AIF c e1 e2)    = ( vc phi (Kc ()) c
                                  , vc (\gam => (phi gam, iATm c gam = True)) psi e1
                                  , vc (\gam => (phi gam, iATm c gam = False)) psi e2)
-  vc phi psi  (ALET e1 e2)     = ( vc phi (Kc ()) e1
+  vc phi psi  (ALET {s} e1 e2) = ( vc phi (Kc ()) e1
                                  , vc (\gam_s => (phi (fst gam_s), snd gam_s = iATm e1 (fst gam_s)))
                                       (\gams_t => psi ((fst (fst gams_t), snd gams_t))) e2)
   vc phi psi  (APRD e1 e2)     = (vc phi (Kc ()) e1, vc phi (Kc ()) e2)
   vc phi psi  (AFST e)         = vc phi (Kc ()) e
   vc phi psi  (ASND e)         = vc phi (Kc ()) e
-  vc phi psi' (AAPP {s} {ksi} {psi} f e) = ( vcF phi f
+  vc phi psi' (AAPP {s} {t} {ksi} {psi} f e) = ( vcF phi f
                                            , vc phi ksi e
                                            , (gam : IC g) -> (is : IU s) -> (it : IU t)
                                               -> phi gam -> ksi (gam, is) -> psi ((gam, is), it) -> psi' (gam, it))
   vc phi psi (ABOP o e1 e2)    = (vc phi (Kc ()) e1, vc phi (Kc ()) e2)
   vc _   _    _                = ()
 
-  0 vcF : (0 phi : IC g -> Type) -> ATmF g s ksi t psi -> Type
+  vcF : {g : _} -> {s : _} -> {psi : _} -> {ksi : _} ->
+        (phi : IC g -> Type) -> ATmF g s ksi t psi -> Type
   vcF phi (AFUN e) = ( (gam : IC g) -> (is : IU s) -> phi gam -> ksi (gam, is) -> pre psi e (gam, is)
                      , vc (\gam_s => (phi (fst gam_s), ksi gam_s)) psi e)
 
@@ -302,4 +307,80 @@ VcAEx3prf = (((\(),x,prf,lx => ( (),(((),())
                ),())
             )
 
--- TODO metaprops
+preMono : {gam : IC g} -> {0 psi1, psi2 : IC (CCx g t) -> Type}
+       -> (e : ATm g t)
+       -> ((it : IU t) -> psi1 (gam,it) -> psi2 (gam,it))
+       -> (pre psi1 e gam -> pre psi2 e gam)
+preMono (AVAR i)          psi1psi2 p                     = psi1psi2 (IIx i gam) p
+preMono  AUNIT            psi1psi2 p                     = psi1psi2 () p
+preMono  ATT              psi1psi2 p                     = psi1psi2 True p
+preMono  AFF              psi1psi2 p                     = psi1psi2 False p
+preMono  AZE              psi1psi2 p                     = psi1psi2 0 p
+preMono (ASU e)           psi1psi2 (pre, psi1prf)        = (pre, (psi1psi2 (S (iATm e gam)) psi1prf))
+preMono (AIF c e1 e2)     psi1psi2 (pre, pre') with (iATm c gam)
+  preMono (AIF c e1 e2)     psi1psi2 (pre, pre') | True  = (pre, preMono e1 psi1psi2 pre')
+  preMono (AIF c e1 e2)     psi1psi2 (pre, pre') | False = (pre, preMono e2 psi1psi2 pre')
+preMono (ALET e1 e2)      psi1psi2 (pre1, pre2)          = (pre1, (preMono e2 psi1psi2 pre2))
+preMono (APRD e1 e2)      psi1psi2 (pre1, pre2, psi1prf) = (pre1, pre2 , (psi1psi2 (iATm e1 gam, iATm e2 gam) psi1prf))
+preMono (AFST e)          psi1psi2 (pre, psi1prf)        = (pre, psi1psi2 (fst (iATm e gam)) psi1prf)
+preMono (ASND e)          psi1psi2 (pre, psi1prf)        = (pre, psi1psi2 (snd (iATm e gam)) psi1prf)
+preMono (AAPP (AFUN f) e) psi1psi2 pre                   = pre
+preMono (ABOP o e1 e2)    psi1psi2 (pre1, pre2, psi1prf) = (pre1, pre2, psi1psi2 (iOp o (iATm e1 gam) (iATm e2 gam)) psi1prf)
+
+mutual
+  vcMono : {g : Cx} ->
+           {0 phi1, phi2 : IC g -> Type} ->
+           {0 psi1, psi2 : IC (CCx g t) -> Type}
+        -> (e : ATm g t)
+        -> ((ig : IC g) -> (phi2 ig -> phi1 ig, (it : IU t) -> phi2 ig -> psi1 (ig,it) -> psi2 (ig,it)))
+        -> (vc phi1 psi1 e -> vc phi2 psi2 e)
+  vcMono (AVAR i)       _    _              = ()
+  vcMono  AUNIT         _    _              = ()
+  vcMono  ATT           _    _              = ()
+  vcMono  AFF           _    _              = ()
+  vcMono  AZE           _    _              = ()
+  vcMono (ASU e)        prf  vc             = vcMono {psi1 = Kc ()} e (\g => (fst (prf g), \_,_ => Kc ())) vc
+  vcMono (AIF c e1 e2)  prf (vcC, vc1, vc2) =
+    ( vcMono c (\ig => (fst (prf ig), \_,_,_ => ())) vcC
+    , vcMono e1 (\ig => ( \p_ct => (fst (prf ig) (Builtin.fst p_ct), Builtin.snd p_ct)
+                        , \it,p_ct,psi1prf => snd (prf ig) it (Builtin.fst p_ct) psi1prf
+                        )) vc1
+    , vcMono e2 (\ig => ( \p_cf => (fst (prf ig) (Builtin.fst p_cf), Builtin.snd p_cf)
+                        , \it,p_cf,psi1prf => snd (prf ig) it (Builtin.fst p_cf) psi1prf
+                        )) vc2
+    )
+  vcMono (ALET e1 e2)   prf (vc1, vc2)      =
+    ( vcMono e1 (\ig => (fst (prf ig), \_,_,_ => ())) vc1
+    , vcMono e2 (\(ig,is) => ( \p_is => (fst (prf ig) (Builtin.fst p_is), Builtin.snd p_is)
+                             , \it,p_is,psi1prf => snd (prf ig) it (Builtin.fst p_is) psi1prf)) vc2
+    )
+  vcMono (APRD e1 e2)   prf (vc1, vc2)      =
+    ( vcMono e1 (\ig => (fst (prf ig), \_,_,_ => ())) vc1
+    , vcMono e2 (\ig => (fst (prf ig), \_,_,_ => ())) vc2
+    )
+  vcMono (AFST e)       prf  vc             = vcMono {psi1 = Kc ()} e (\ig => (fst (prf ig), \_,_,_ => ())) vc
+  vcMono (ASND e)       prf  vc             = vcMono {psi1 = Kc ()} e (\ig => (fst (prf ig), \_,_,_ => ())) vc
+  vcMono (AAPP f e)     prf (vcF, vcE, vcR) =
+    ( vcFMono f (\ig => fst (prf ig)) vcF
+    , vcMono e (\ig => (fst (prf ig), \_,_,kp => kp)) vcE
+    , \ig,is,it,phi2prf,psiprf,ksiprf =>
+        snd (prf ig) it phi2prf $
+          vcR ig is it (fst (prf ig) phi2prf) psiprf ksiprf
+    )
+  vcMono (ABOP o e1 e2) prf (vc1, vc2)      =
+    ( vcMono e1 (\ig => (fst (prf ig), \_,_,_ => ())) vc1
+    , vcMono e2 (\ig => (fst (prf ig), \_,_,_ => ())) vc2
+    )
+
+  vcFMono : {g : Cx} -> {s : U} ->
+            {0 phi1, phi2 : IC g -> Type} ->
+            {0 ksi : IC (CCx g s) -> Type} ->
+            {0 psi : IC (CCx (CCx g s) t) -> Type} ->
+            (f : ATmF g s ksi t psi)
+         -> ((ig : IC g) -> phi2 ig -> phi1 ig)
+         -> (vcF phi1 f -> vcF phi2 f)
+  vcFMono (AFUN e) phi2phi1 (p, vcE) =
+    (\g,s,phi2prf,ksiprf => p g s (phi2phi1 g phi2prf) ksiprf
+    , vcMono e (\(ig,is) => (\p_k => (phi2phi1 ig (Builtin.fst p_k), Builtin.snd p_k), \_,_,pp => pp))
+               vcE
+    )
