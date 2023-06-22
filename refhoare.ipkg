@@ -1,0 +1,9 @@
+package refhoare
+
+sourcedir = "src"
+
+modules = LambdaB
+        , LambdaR
+        , LambdaC
+
+depends = contrib
