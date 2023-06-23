@@ -384,3 +384,41 @@ mutual
     , vcMono e (\(ig,is) => (\p_k => (phi2phi1 ig (Builtin.fst p_k), Builtin.snd p_k), \_,_,pp => pp))
                vcE
     )
+
+preCompleteness : (e : CTm g phi t psi)
+               -> (gam : IC g) -> phi gam -> pre psi (ErC e) gam
+preCompleteness (CVAR i)       _   _      = Refl
+preCompleteness  CUNIT         _   _      = Refl
+preCompleteness  CTT           _   _      = Refl
+preCompleteness  CFF           _   _      = Refl
+preCompleteness  CZE           _   _      = Refl
+preCompleteness (CSU e)        gam phiprf =
+  ( preMono (ErC e) (\_,_ => ()) (preCompleteness e gam phiprf)
+  , Refl)
+preCompleteness (CIF c e1 e2)  gam phiprf with (iATm (ErC c) gam) proof cond
+  preCompleteness (CIF c e1 e2)  gam phiprf | True =
+    ( preMono (ErC c) (\_,_ => ()) (preCompleteness c gam phiprf)
+    , preCompleteness e1 gam (phiprf, cond))
+  preCompleteness (CIF c e1 e2)  gam phiprf | False =
+    ( preMono (ErC c) (\_,_ => ()) (preCompleteness c gam phiprf)
+    , preCompleteness e2 gam (phiprf, cond))
+preCompleteness (CLET e1 e2)   gam phiprf =
+  ( preMono (ErC e1) (\_,_ => ()) (preCompleteness e1 gam phiprf)
+  , preCompleteness e2 (gam, iATm (ErC e1) gam) (phiprf, Refl))
+preCompleteness (CPRD e1 e2)   gam phiprf =
+  ( preMono (ErC e1) (\_,_ => ()) (preCompleteness e1 gam phiprf)
+  , preMono (ErC e2) (\_,_ => ()) (preCompleteness e2 gam phiprf)
+  , Refl)
+preCompleteness (CFST e)       gam phiprf =
+  ( preMono (ErC e) (\_,_ => ()) (preCompleteness e gam phiprf)
+  , Refl)
+preCompleteness (CSND e)       gam phiprf =
+  ( preMono (ErC e) (\_,_ => ()) (preCompleteness e gam phiprf)
+  , Refl)
+preCompleteness (CAPP f e)     gam phiprf = preCompleteness e gam phiprf
+preCompleteness (CBOP o e1 e2) gam phiprf =
+  ( preMono (ErC e1) (\_,_ => ()) (preCompleteness e1 gam phiprf)
+  , preMono (ErC e2) (\_,_ => ()) (preCompleteness e2 gam phiprf)
+  , Refl)
+preCompleteness (CSUB e _ sub) gam phiprf =
+  preMono (ErC e) (\it => sub gam it phiprf) (preCompleteness e gam phiprf)
