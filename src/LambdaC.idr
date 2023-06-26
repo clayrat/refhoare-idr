@@ -422,3 +422,143 @@ preCompleteness (CBOP o e1 e2) gam phiprf =
   , Refl)
 preCompleteness (CSUB e _ sub) gam phiprf =
   preMono (ErC e) (\it => sub gam it phiprf) (preCompleteness e gam phiprf)
+
+mutual
+  vcCompleteness : {g : Cx} ->
+                   {0 phi : IC g -> Type} -> {0 psi : IC (CCx g t) -> Type} ->
+                   (e : CTm g phi t psi) -> vc phi psi (ErC e)
+  vcCompleteness (CVAR i) = ()
+  vcCompleteness  CUNIT = ()
+  vcCompleteness  CTT = ()
+  vcCompleteness  CFF = ()
+  vcCompleteness  CZE = ()
+  vcCompleteness (CSU e) = vcMono (ErC e) (\gam => (id, \_,_,_ => ())) (vcCompleteness e)
+  vcCompleteness (CIF c e1 e2) =
+    ( vcMono (ErC c) (\_ => (id, \_,_,_ => ())) (vcCompleteness c)
+    , vcCompleteness e1
+    , vcCompleteness e2)
+  vcCompleteness (CLET e1 e2) =
+    (vcMono (ErC e1) (\_ => (id, \_,_,_ => ())) (vcCompleteness e1)
+    , vcMono (ErC e2) (\gam => (id, \_,_ => id)) (vcCompleteness e2))
+  vcCompleteness (CPRD e1 e2) =
+    ( vcMono (ErC e1) (\_ => (id, \_,_,_ => ())) (vcCompleteness e1)
+    , vcMono (ErC e2) (\_ => (id, \_,_,_ => ())) (vcCompleteness e2))
+  vcCompleteness (CFST e) =
+    vcMono (ErC e) (\_ => (id, \_,_,_ => ())) (vcCompleteness e)
+  vcCompleteness (CSND e) =
+    vcMono (ErC e) (\_ => (id, \_,_,_ => ())) (vcCompleteness e)
+  vcCompleteness (CAPP f e) =
+    ( vcFCompleteness f
+    , vcCompleteness e
+    , \gam,s,t,phiprf,ksiprf,psiprf => (s ** (ksiprf, psiprf)))
+  vcCompleteness (CBOP o e1 e2) =
+    ( vcMono (ErC e1) (\_ => (id, \_,_,_ => ())) (vcCompleteness e1)
+    , vcMono (ErC e2) (\_ => (id, \_,_,_ => ())) (vcCompleteness e2))
+  vcCompleteness (CSUB e _ sub) =
+    vcMono (ErC e) (\gam => (id, sub gam)) (vcCompleteness e)
+
+  vcFCompleteness : {g : Cx} -> {s : U} ->
+                    {0 phi : IC g -> Type} ->
+                    {0 ksi : IC (CCx g s) -> Type} ->
+                    {0 psi : IC (CCx (CCx g s) t) -> Type} ->
+                    (f : CTmF g phi s ksi t psi) -> vcF phi (ErCF f)
+  vcFCompleteness (CFUN e) =
+    ( \gam, s, phiprf, ksiprf => preCompleteness e (gam, s) (phiprf, ksiprf)
+    , vcCompleteness e)
+
+tupleEta : (t : (a,b)) -> t = (fst t, snd t)
+tupleEta (x,y) = Refl
+
+prevcSoundness' : {0 phi : IC g -> Type} -> {psi : IC (CCx g t) -> Type} ->
+                  (e : ATm g t)
+               -> vc phi psi e
+               -> ((gam : IC g) -> phi gam -> pre psi e gam)
+               -> (e' : CTm g phi t psi ** ErC e' = e)
+prevcSoundness' (AVAR x) vc p =
+  (CSUB (CVAR x) _ (\gam,nu,phiprf,enu => rewrite enu in p gam phiprf)
+  ** Refl)
+prevcSoundness' AUNIT vc p =
+  (CSUB CUNIT psi (\gam,nu,phiprf,enu => rewrite enu in p gam phiprf)
+  ** Refl)
+prevcSoundness' ATT vc p =
+  (CSUB CTT psi (\gam,nu,phiprf,enu => rewrite enu in p gam phiprf)
+  ** Refl)
+prevcSoundness' AFF vc p =
+  (CSUB CFF psi (\gam,nu,phiprf,enu => rewrite enu in p gam phiprf)
+  ** Refl)
+prevcSoundness' AZE vc p =
+  (CSUB CZE psi (\gam,nu,phiprf,enu => rewrite enu in p gam phiprf)
+  ** Refl)
+prevcSoundness' (ASU e) vc p =
+  let (e' ** ee) = prevcSoundness' e vc (\gam, phiprf => fst $ p gam phiprf) in
+  (CSUB (CSU e') psi (\gam,nu,phiprf,enu => rewrite enu in rewrite ee in snd $ p gam phiprf)
+  ** rewrite ee in Refl)
+prevcSoundness' (AIF c e1 e2) (vcC, vc1, vc2) p =
+  let
+    (c' ** ec) = prevcSoundness' c vcC (\gam, phiprf => fst $ p gam phiprf)
+    (e1' ** ee1) = prevcSoundness' e1 vc1 (\gam, pp_ec =>
+       replace {p = \z => ifThenElse z (Delay (pre psi e1 gam)) (Delay (pre psi e2 gam))}
+               (Builtin.snd pp_ec) $
+       snd $ p gam (Builtin.fst pp_ec))
+    (e2' ** ee2) = prevcSoundness' e2 vc2 (\gam, pp_ec =>
+       replace {p = \z => ifThenElse z (Delay (pre psi e1 gam)) (Delay (pre psi e2 gam))}
+               (Builtin.snd pp_ec) $
+       snd $ p gam (Builtin.fst pp_ec))
+    in
+  (CIF c' (rewrite ec in e1') (rewrite ec in e2')
+   ** rewrite ec in rewrite ee1 in rewrite ee2 in Refl)
+prevcSoundness' (ALET e1 e2) (vc1, vc2) p =
+  let
+    (e1' ** ee1) = prevcSoundness' e1 vc1 (\gam,phiprf => fst $ p gam phiprf)
+    (e2' ** ee2) = prevcSoundness' e2 vc2 (\gam_s,p_e =>
+      rewrite tupleEta gam_s in
+      replace {p = \z => pre (\gs_t => psi (fst (fst gs_t), snd gs_t)) e2 (fst gam_s, z)}
+              (sym $ Builtin.snd p_e) $
+      snd $ p (fst gam_s) (Builtin.fst p_e))
+   in
+  (CLET e1' (rewrite ee1 in e2')
+   ** rewrite ee1 in rewrite ee2 in Refl)
+prevcSoundness' (APRD e1 e2) (vc1, vc2) p =
+  let
+    (e1' ** ee1) = prevcSoundness' e1 vc1 (\gam,phiprf => fst $ p gam phiprf)
+    (e2' ** ee2) = prevcSoundness' e2 vc2 (\gam,phiprf => fst $ snd $ p gam phiprf)
+   in
+  (CSUB (CPRD e1' e2') psi (\gam,x_y,phiprf,exy => rewrite exy in rewrite ee1 in rewrite ee2 in
+                                                   snd $ snd $ p gam phiprf)
+   ** rewrite ee1 in rewrite ee2 in Refl)
+prevcSoundness' (AFST e) vc p =
+  let
+    (e' ** ee) = prevcSoundness' e vc (\gam,phiprf => fst $ p gam phiprf)
+   in
+   (CSUB (CFST e') psi (\gam,x,phiprf,ex => rewrite ex in rewrite ee in snd $ p gam phiprf)
+    ** rewrite ee in Refl)
+prevcSoundness' (ASND e) vc p =
+  let
+    (e' ** ee) = prevcSoundness' e vc (\gam,phiprf => fst $ p gam phiprf)
+   in
+   (CSUB (CSND e') psi (\gam,x,phiprf,ex => rewrite ex in rewrite ee in snd $ p gam phiprf)
+    ** rewrite ee in Refl)
+prevcSoundness' (AAPP (AFUN f) e) (vcF, vcE, vcR) p =
+  let
+    (f' ** ef) = prevcSoundness' f (snd vcF) (\gam_s,pp_kp =>
+                                                rewrite tupleEta gam_s in
+                                                fst vcF (fst gam_s) (snd gam_s) (Builtin.fst pp_kp)
+                                                    (rewrite sym $ tupleEta gam_s in Builtin.snd pp_kp))
+    (e' ** ee) = prevcSoundness' e vcE p
+   in
+  (CSUB (CAPP (CFUN f') e') psi (\gam,x,phiprf,(s**(ksiprf,psi1prf)) => vcR gam s x phiprf ksiprf psi1prf)
+   ** rewrite ee in rewrite sym ef in Refl)
+prevcSoundness' (ABOP o e1 e2) (vc1, vc2) p =
+  let
+    (e1' ** ee1) = prevcSoundness' e1 vc1 (\gam,phiprf => fst $ p gam phiprf)
+    (e2' ** ee2) = prevcSoundness' e2 vc2 (\gam,phiprf => fst $ snd $ p gam phiprf)
+   in
+  (CSUB (CBOP o e1' e2') psi (\gam,x_y,phiprf,exy => rewrite exy in rewrite ee1 in rewrite ee2 in
+                                                     snd $ snd $ p gam phiprf)
+   ** rewrite ee1 in rewrite ee2 in Refl)
+
+prevcSoundness : (psi : IC (CCx g t) -> Type)
+              -> (e : ATm g t)
+              -> (vc (pre psi e) psi e)
+              -> (e' : CTm g (pre psi e) t psi ** ErC e' = e)
+prevcSoundness psi e vc = prevcSoundness' e vc (\_ => id)
